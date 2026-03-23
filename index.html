@@ -157,6 +157,9 @@ a,button,[onclick]{touch-action:manipulation}
   .ph{display:block!important}
   .qval-row{gap:3px}
   .qval-btn{padding:3px 7px;font-size:11px}
+  .note-area{padding:0 13px 10px 13px!important}
+  .note-disp{display:block!important}
+  .note-ta{display:none!important}
 }
 .ph{display:none}
 .ph h2{font-size:16px;font-weight:800;margin-bottom:3px}
@@ -171,7 +174,7 @@ a,button,[onclick]{touch-action:manipulation}
     <div class="tb-title" id="tb-title">GlobalG.A.P.</div>
     <div class="tb-sub" id="tb-sub">Annata 2025/2026 · SATA S.r.l.</div>
   </div>
-  <button class="tb-pdf no-print" id="btn-pdf" onclick="window.print()">⬇ PDF</button>
+  <button class="tb-pdf no-print" id="btn-pdf" onclick="generatePDF()">⬇ PDF</button>
 </div>
 
 <div class="content" id="root"></div>
@@ -194,6 +197,8 @@ a,button,[onclick]{touch-action:manipulation}
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script>
 // ══════════════════════════════════════════════════
 // SEZIONI DOCUMENTAZIONE (✓/✗)
@@ -736,6 +741,150 @@ function modalOk(){
 }
 function closeModal(){document.getElementById("modal").style.display="none";modalMode=null;}
 function closeOvr(e){if(e.target.classList.contains("overlay"))closeModal();}
+
+// ══════════════════════════════════════════════════
+// GENERA PDF / STAMPA
+// ══════════════════════════════════════════════════
+function generatePDF(){
+  const e=db.entities.find(x=>x.id===nav.entityId);if(!e)return;
+  const ti=TI[e.type]||TI.singola;
+  const folder=e.folderId?db.folders.find(f=>f.id===e.folderId):null;
+  const checks=db.checks[e.id]||{};
+  const notes=db.notes[e.id]||{};
+  const qvals=db.qval[e.id]||{};
+  const qnotes=db.qnotes[e.id]||{};
+  const cd=db.dates[e.id]||"";
+  const d=docDone(e.id);const p=docPct(e.id);
+  const qs=qStats(e.id);
+
+  const valColor={C:"#0F6E56",PC:"#854F0B",NC:"#A32D2D",NA:"#555",NV:"#3C3489"};
+  const valBg={C:"#e8f7f2",PC:"#faeeda",NC:"#fcebeb",NA:"#f0f4f8",NV:"#EEEDFE"};
+  const pesoBg={KO:"#fcebeb",F:"#faeeda",A:"#e8f7f2"};
+  const pesoCol={KO:"#A32D2D",F:"#854F0B",A:"#0F6E56"};
+
+  let html=`<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"/>
+<title>GlobalGAP - ${e.name}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:12px;color:#1a2540;background:#fff;padding:16px}
+.hdr{background:#1F3864;color:#fff;padding:10px 14px;border-radius:6px;margin-bottom:12px}
+.hdr h1{font-size:16px;font-weight:700;margin-bottom:2px}
+.hdr p{font-size:11px;opacity:.8}
+.info-row{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;padding:8px 12px;background:#f0f4f8;border-radius:6px}
+.info-item{font-size:11px;color:#5a6a88}
+.info-item strong{color:#1a2540}
+.tab-title{font-size:14px;font-weight:700;color:#1F3864;border-bottom:2px solid #1F3864;padding-bottom:4px;margin:14px 0 8px}
+.sec-hdr{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:5px;margin-bottom:4px}
+.sec-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sec-name{font-size:12px;font-weight:700;flex:1}
+.sec-badge{font-size:10px;padding:2px 7px;border-radius:99px;font-weight:700}
+.itm{display:flex;align-items:flex-start;gap:8px;padding:6px 10px;border-bottom:1px solid #eee}
+.itm:last-child{border-bottom:none}
+.chk{width:14px;height:14px;border:1.5px solid #ccc;border-radius:3px;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center}
+.chk.on{background:#1D9E75;border-color:#1D9E75}
+.itm-txt{font-size:11px;line-height:1.5;flex:1}
+.itm-txt.done{text-decoration:line-through;color:#8a9ab8}
+.note{font-size:10px;color:#185FA5;background:#e6f1fb;border-radius:4px;padding:4px 7px;margin-top:4px;line-height:1.4}
+.qitm{padding:6px 10px;border-bottom:1px solid #eee}
+.qitm:last-child{border-bottom:none}
+.qitm-top{display:flex;align-items:flex-start;gap:7px;margin-bottom:4px}
+.peso{font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;flex-shrink:0;margin-top:1px}
+.qval{font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;display:inline-block}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.met{text-align:center;padding:8px;border:1px solid #dde3ec;border-radius:6px}
+.met-v{font-size:18px;font-weight:700}
+.met-l{font-size:9px;color:#5a6a88;margin-top:2px}
+.sec-box{border:1px solid #dde3ec;border-radius:6px;margin-bottom:8px;overflow:hidden;break-inside:avoid}
+.banner{padding:7px 12px;border-radius:5px;font-size:12px;font-weight:700;text-align:center;margin-bottom:10px}
+@media print{body{padding:8px}@page{margin:12mm}}
+</style></head><body>`;
+
+  // HEADER
+  html+=`<div class="hdr"><h1>Checklist GlobalG.A.P. 2025/2026 &ndash; ${e.name}</h1><p>${ti.label}${folder?" &middot; "+folder.name:""}${cd?" &middot; Data compilazione: "+fmtD(cd):""}</p></div>`;
+
+  // INFO ROW
+  html+=`<div class="info-row">
+    <div class="info-item"><strong>Documentazione:</strong> ${d}/${DOC_TOTAL} voci (${p}%)</div>
+    <div class="info-item"><strong>Qualifica &ndash; Conformit&agrave;:</strong> ${qs.conf!==null?qs.conf+"%":"non avviata"}</div>
+    <div class="info-item"><strong>C:</strong> ${qs.C} &nbsp;<strong>PC:</strong> ${qs.PC} &nbsp;<strong>NC:</strong> ${qs.NC} &nbsp;<strong>NA:</strong> ${qs.NA} &nbsp;<strong>NV:</strong> ${qs.NV}</div>
+    ${qs.koNC>0?`<div class="info-item" style="color:#A32D2D;font-weight:700">&#9940; ${qs.koNC} KO non conforme${qs.koNC>1?"i":""}</div>`:""}
+  </div>`;
+
+  // ── DOCUMENTAZIONE ──
+  html+=`<div class="tab-title">&#128203; Documentazione</div>`;
+  DOC_SECTIONS.forEach(sec=>{
+    const sd=sec.items.filter((_,i)=>checks[sec.id+"_"+i]).length;
+    const bsColor=sd===sec.items.length?"#e8f7f2":sd>0?"#faeeda":"#f0f4f8";
+    const btColor=sd===sec.items.length?"#0F6E56":sd>0?"#854F0B":"#5a6a88";
+    html+=`<div class="sec-box"><div class="sec-hdr" style="background:${bsColor}">
+      <div class="sec-dot" style="background:${sec.color}"></div>
+      <div class="sec-name">${sec.label}</div>
+      <span class="sec-badge" style="background:${bsColor};color:${btColor}">${sd}/${sec.items.length}</span>
+    </div>`;
+    sec.items.forEach((text,idx)=>{
+      const k=sec.id+"_"+idx;const isDone=!!checks[k];const noteVal=notes[k]||"";
+      html+=`<div class="itm">
+        <div class="chk${isDone?" on":"}">${isDone?`<svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>`:""}}</div>
+        <div style="flex:1"><div class="itm-txt${isDone?" done":""}">${text}</div>${noteVal?`<div class="note">&#128221; ${noteVal}</div>`:""}</div>
+      </div>`;
+    });
+    html+=`</div>`;
+  });
+
+  // ── QUALIFICA ──
+  html+=`<div class="tab-title" style="margin-top:16px">&#9989; Qualifica</div>`;
+  if(qs.eval===0){html+=`<div class="banner" style="background:#f0f4f8;color:#5a6a88">Nessuna valutazione inserita</div>`;}
+  else if(qs.koNC>0){html+=`<div class="banner" style="background:#fcebeb;color:#A32D2D">&#9940; ${qs.koNC} KO non conforme${qs.koNC>1?"i":""} &mdash; Conformit&agrave;: ${qs.conf}%</div>`;}
+  else if(qs.conf>=80){html+=`<div class="banner" style="background:#e8f7f2;color:#0F6E56">Conformit&agrave;: ${qs.conf}% (C: ${qs.C} &middot; PC: ${qs.PC} &middot; NC: ${qs.NC})</div>`;}
+  else{html+=`<div class="banner" style="background:#faeeda;color:#854F0B">&#9888; Conformit&agrave;: ${qs.conf}% (C: ${qs.C} &middot; PC: ${qs.PC} &middot; NC: ${qs.NC})</div>`;}
+
+  Q.forEach(sec=>{
+    const secNC=sec.items.filter((_,i)=>qvals[sec.id+"_"+i]==="NC").length;
+    const secEval=sec.items.filter((_,i)=>qvals[sec.id+"_"+i]&&!["NA","NV"].includes(qvals[sec.id+"_"+i])).length;
+    const secC=sec.items.filter((_,i)=>qvals[sec.id+"_"+i]==="C").length;
+    const bsColor=secNC>0?"#fcebeb":secEval===sec.items.length&&secEval>0?"#e8f7f2":secEval>0?"#faeeda":"#f0f4f8";
+    const btColor=secNC>0?"#A32D2D":secEval===sec.items.length&&secEval>0?"#0F6E56":secEval>0?"#854F0B":"#5a6a88";
+    html+=`<div class="sec-box"><div class="sec-hdr" style="background:${bsColor}">
+      <div class="sec-dot" style="background:${sec.color}"></div>
+      <div class="sec-name">${sec.label}</div>
+      <span class="sec-badge" style="background:${bsColor};color:${btColor}">${secEval>0?secC+"/"+secEval:"–"}</span>
+    </div>`;
+    sec.items.forEach((itm,idx)=>{
+      const k=sec.id+"_"+idx;const v=qvals[k];const qn=qnotes[k]||"";
+      if(!v&&!qn)return; // salta voci non valutate senza note
+      const pbg=pesoBg[itm.p]||"#f0f4f8";const pcol=pesoCol[itm.p]||"#5a6a88";
+      const vbg=v?valBg[v]:"#f0f4f8";const vcol=v?valColor[v]:"#5a6a88";
+      html+=`<div class="qitm">
+        <div class="qitm-top">
+          <span class="peso" style="background:${pbg};color:${pcol}">${itm.p||"–"}</span>
+          <div style="flex:1;font-size:11px;line-height:1.5">${itm.t}</div>
+          ${v?`<span class="qval" style="background:${vbg};color:${vcol}">${v}</span>`:""}
+        </div>
+        ${qn?`<div class="note">&#128221; ${qn}</div>`:""}
+      </div>`;
+    });
+    html+=`</div>`;
+  });
+
+  html+=`</body></html>`;
+
+  // Apre nuova finestra e stampa — funziona su iOS, Android e PC
+  const win=window.open("","_blank","width=800,height=900");
+  if(win){
+    win.document.write(html);
+    win.document.close();
+    win.onload=()=>{setTimeout(()=>{win.print();},300);};
+    setTimeout(()=>{if(win.document.readyState==="complete")win.print();},800);
+  } else {
+    // Fallback se il popup è bloccato: sostituisce la pagina temporaneamente
+    const orig=document.body.innerHTML;
+    const origTitle=document.title;
+    document.title="GlobalGAP - "+e.name;
+    document.body.innerHTML=html.replace(/<!DOCTYPE.*?<body>/s,"").replace(/<\/body>.*$/s,"");
+    window.print();
+    setTimeout(()=>{document.body.innerHTML=orig;document.title=origTitle;render();},1000);
+  }
+}
 
 // ══════════════════════════════════════════════════
 // PWA
